@@ -5,7 +5,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from config import BOT_TOKEN, AUTHORIZED_USER_IDS
-from handlers import start_command, help_command, handle_file, nearest_command, list_command, test_command, about_command
+from handlers import start_command, help_command, handle_file, nearest_command, list_command, test_command, about_command, greet_command
 from scheduler import setup_scheduler
 
 # Настройка логирования
@@ -32,6 +32,7 @@ def main():
     application.add_handler(CommandHandler("list", list_command))
     application.add_handler(CommandHandler("test", test_command))
     application.add_handler(CommandHandler("about", about_command))
+    application.add_handler(CommandHandler("greet", greet_command))
 
     # Регистрируем обработчик файлов для каждого авторизованного пользователя
     application.add_handler(MessageHandler(
