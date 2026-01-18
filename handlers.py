@@ -454,7 +454,17 @@ async def greet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     try:
-        from greetings_generator import generate_greeting, generate_collective_greeting
+        # Импортируем здесь, чтобы избежать ошибок при загрузке
+        try:
+            from greetings_generator import generate_greeting, generate_collective_greeting
+            generator_available = True
+        except ImportError:
+            generator_available = False
+            await update.message.reply_text(
+                "⚠️ Генератор поздравлений не найден.\n"
+                "Проверьте наличие файла greetings_generator.py"
+            )
+            return
         
         # Если передан аргумент - имя для теста
         if context.args:
@@ -468,16 +478,33 @@ async def greet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             # Генерируем 3 разных поздравления
             for i in range(1, 4):
-                greeting = generate_greeting(name, min_sentences=3, max_sentences=5)
-                message_lines.append(f"\n{i}. {greeting}")
+                try:
+                    greeting = generate_greeting(name, min_sentences=3, max_sentences=5)
+                    message_lines.append(f"\n{i}. {greeting}")
+                except Exception as e:
+                    message_lines.append(f"\n{i}. ❌ Ошибка: {str(e)}")
             
             # Тест коллективного поздравления
             message_lines.append(f"\n**Коллективное поздравление (тест):**")
-            test_names = [name, "Иван", "Мария"]
-            collective = generate_collective_greeting(test_names)
-            message_lines.append(f"\n{collective}")
+            try:
+                test_names = [name, "Иван", "Мария"]
+                collective = generate_collective_greeting(test_names)
+                message_lines.append(f"\n{collective}")
+            except Exception as e:
+                message_lines.append(f"\n❌ Ошибка коллективного поздравления: {str(e)}")
             
-            await update.message.reply_text("\n".join(message_lines))
+            # Отправляем сообщение
+            full_message = "\n".join(message_lines)
+            
+            # Разбиваем на части если слишком длинное (ограничение Telegram 4096 символов)
+            if len(full_message) > 4000:
+                part1 = full_message[:4000]
+                part2 = full_message[4000:]
+                await update.message.reply_text(part1)
+                await asyncio.sleep(0.5)
+                await update.message.reply_text(part2[:4000] if len(part2) > 4000 else part2)
+            else:
+                await update.message.reply_text(full_message)
             
         else:
             # Без аргументов - общая информация
@@ -493,11 +520,13 @@ async def greet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "• Автоматически подбираются эмодзи 🎉✨🎂",
                 "",
                 "**Использование:**",
-                "• /greet [имя] - тест генерации для конкретного имени",
-                "• /nearest - ближайшие дни рождения с уникальными поздравлениями",
+                "• `/greet [имя]` - тест генерации для конкретного имени",
+                "• `/nearest` - ближайшие дни рождения с уникальными поздравлениями",
                 "• Автоматические уведомления в 09:00",
                 "",
-                "**Пример:** `/greet Анна`",
+                "**Примеры:**",
+                "`/greet Анна` - покажет 3 разных поздравления для Анны",
+                "`/greet Иван` - покажет 3 разных поздравления для Ивана",
                 "",
                 "**Структура поздравления:**",
                 "1. Обращение к имениннику",
@@ -509,9 +538,9 @@ async def greet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("\n".join(message_lines))
         
     except Exception as e:
-        logger.error(f"Ошибка в команде /greet: {e}")
+        logger.error(f"Ошибка в команде /greet: {e}", exc_info=True)
         await update.message.reply_text(f"❌ Произошла ошибка: {str(e)}")
-
+        
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /about - информация о системе генерации."""
     user_id = update.effective_user.id
