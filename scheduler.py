@@ -1,8 +1,14 @@
 from telegram import Bot
 from telegram.error import TelegramError
-from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import logging
+import atexit
+import sys
+import os
+
+# Добавляем путь для импортов
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from config import BOT_TOKEN, AUTHORIZED_USER_IDS, DATA_FILE
 from utils import load_birthdays, get_today_date, get_tomorrow_date
@@ -10,69 +16,172 @@ from utils import load_birthdays, get_today_date, get_tomorrow_date
 logger = logging.getLogger(__name__)
 
 def send_birthday_notifications():
-    """Отправляет уведомления о днях рождения всем авторизованным пользователям."""
+    """Отправляет уведомления о днях рождения."""
     try:
-        bot = Bot(token=BOT_TOKEN)
-
-        # Загружаем общие данные
-        birthdays = load_birthdays(DATA_FILE)
-        if not birthdays:
-            logger.info("Нет данных о днях рождения")
+        logger.info("🔄 Начало отправки уведомлений...")
+        
+        # Проверяем токен
+        if not BOT_TOKEN or BOT_TOKEN == 'ваш_токен_бота_от_BotFather':
+            logger.error("❌ BOT_TOKEN не установлен или имеет значение по умолчанию")
             return
-
+        
+        bot = Bot(token=BOT_TOKEN)
+        
+        # Проверяем пользователей
+        if not AUTHORIZED_USER_IDS:
+            logger.error("❌ Нет авторизованных пользователей")
+            return
+        
+        # Загружаем данные
+        try:
+            birthdays = load_birthdays(DATA_FILE)
+            if not birthdays:
+                logger.info("📭 Нет данных о днях рождения")
+                return
+            logger.info(f"📊 Загружено {len(birthdays)} записей")
+        except Exception as e:
+            logger.error(f"❌ Ошибка загрузки данных: {e}")
+            return
+        
         # Получаем даты
-        today = get_today_date()
-        tomorrow = get_tomorrow_date()
-
+        try:
+            today = get_today_date()
+            tomorrow = get_tomorrow_date()
+            logger.info(f"📅 Даты: сегодня {today}, завтра {tomorrow}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения дат: {e}")
+            return
+        
         # Ищем совпадения
-        today_birthdays = [b['name'] for b in birthdays if b['birthday'] == today]
-        tomorrow_birthdays = [b['name'] for b in birthdays if b['birthday'] == tomorrow]
-
-        # Формируем сообщение
+        today_birthdays = []
+        tomorrow_birthdays = []
+        
+        try:
+            for b in birthdays:
+                if 'birthday' not in b or 'name' not in b:
+                    continue
+                    
+                if b['birthday'] == today:
+                    today_birthdays.append(b['name'])
+                elif b['birthday'] == tomorrow:
+                    tomorrow_birthdays.append(b['name'])
+                    
+            logger.info(f"🎂 Найдено на сегодня: {len(today_birthdays)}")
+            logger.info(f"📅 Найдено на завтра: {len(tomorrow_birthdays)}")
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка поиска совпадений: {e}")
+            return
+        
+        # Формируем сообщения
+        from utils import format_birthday_message
+        
         messages = []
-
+        
         if today_birthdays:
-            names = ', '.join(today_birthdays)
-            messages.append(f"🎂 Сегодня день рождения у: {names}!")
-
+            try:
+                today_message = format_birthday_message(today_birthdays, is_today=True)
+                messages.append(today_message)
+                logger.info(f"📝 Сообщение на сегодня: {len(today_message)} символов")
+            except Exception as e:
+                logger.error(f"❌ Ошибка форматирования сообщения на сегодня: {e}")
+        
         if tomorrow_birthdays:
-            names = ', '.join(tomorrow_birthdays)
-            messages.append(f"📅 Завтра день рождения у: {names}")
-
+            try:
+                tomorrow_message = format_birthday_message(tomorrow_birthdays, is_today=False)
+                messages.append(tomorrow_message)
+                logger.info(f"📝 Сообщение на завтра: {len(tomorrow_message)} символов")
+            except Exception as e:
+                logger.error(f"❌ Ошибка форматирования сообщения на завтра: {e}")
+        
         # Отправляем всем пользователям если есть что отправлять
         if messages:
-            message_text = "\n".join(messages)
+            message_text = "\n\n".join(messages)
+            
+            # Добавляем разделитель если нужно
+            if today_birthdays or tomorrow_birthdays:
+                try:
+                    from greetings_generator import get_collective_greeting
+                    message_text += f"\n\n{get_collective_greeting()}"
+                except ImportError:
+                    message_text += f"\n\n🎉 Поздравляем всех именинников!"
+            
+            logger.info(f"📨 Итоговое сообщение: {len(message_text)} символов")
+            
+            successful_sends = 0
+            failed_sends = 0
+            
             for user_id in AUTHORIZED_USER_IDS:
                 try:
-                    bot.send_message(chat_id=user_id, text=message_text)
-                    logger.info(f"Отправлено уведомление пользователю {user_id}")
+                    bot.send_message(
+                        chat_id=user_id, 
+                        text=message_text,
+                        parse_mode='HTML'
+                    )
+                    logger.info(f"✅ Отправлено пользователю {user_id}")
+                    successful_sends += 1
+                    
+                except TelegramError as e:
+                    logger.error(f"❌ Ошибка Telegram пользователю {user_id}: {e}")
+                    failed_sends += 1
                 except Exception as e:
-                    logger.error(f"Ошибка отправки пользователю {user_id}: {e}")
+                    logger.error(f"❌ Общая ошибка отправки пользователю {user_id}: {e}")
+                    failed_sends += 1
+            
+            logger.info(f"📊 Итог: успешно {successful_sends}, ошибок {failed_sends}")
+            
         else:
-            logger.info("Нет дней рождения на сегодня/завтра")
-
+            logger.info("ℹ️ Нет уведомлений для отправки (нет дней рождения)")
+            
     except TelegramError as e:
-        logger.error(f"Ошибка Telegram при отправке уведомления: {e}")
+        logger.error(f"❌ Ошибка Telegram API: {e}")
     except Exception as e:
-        logger.error(f"Ошибка при отправке уведомлений: {e}")
+        logger.error(f"❌ Критическая ошибка в send_birthday_notifications: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
 
 def setup_scheduler():
     """Настраивает и запускает планировщик."""
-    scheduler = BlockingScheduler()
-
-    # Задача на 09:00 каждый день
-    scheduler.add_job(
-        send_birthday_notifications,
-        CronTrigger(hour=9, minute=0),
-        id='birthday_notifications',
-        name='Ежедневные уведомления о днях рождения',
-        replace_existing=True
-    )
-
-    logger.info(f"Планировщик запущен. Пользователей: {len(AUTHORIZED_USER_IDS)}")
-    logger.info(f"Уведомления будут отправляться в 09:00 каждый день.")
-
     try:
+        logger.info("⏰ Настройка планировщика...")
+        
+        scheduler = BackgroundScheduler()
+        
+        # Задача на 09:00 каждый день
+        scheduler.add_job(
+            send_birthday_notifications,
+            CronTrigger(hour=9, minute=0, timezone='Europe/Moscow'),
+            id='birthday_notifications',
+            name='Ежедневные уведомления о днях рождения',
+            replace_existing=True
+        )
+        
+        # Тестовая задача - каждые 30 минут для отладки
+        scheduler.add_job(
+            lambda: logger.info("🔄 Планировщик работает (тестовая задача)"),
+            'interval',
+            minutes=30,
+            id='test_job',
+            name='Тестовая задача'
+        )
+        
+        # Останавливаем планировщик при выходе
+        atexit.register(lambda: scheduler.shutdown(wait=False))
+        
         scheduler.start()
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("Планировщик остановлен")
+        
+        # Выводим информацию о задачах
+        jobs = scheduler.get_jobs()
+        logger.info(f"✅ Планировщик запущен. Задач: {len(jobs)}")
+        
+        for job in jobs:
+            next_run = job.next_run_time.strftime('%Y-%m-%d %H:%M:%S') if job.next_run_time else 'N/A'
+            logger.info(f"   📅 Задача '{job.name}': следующее выполнение {next_run}")
+        
+        return scheduler
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка настройки планировщика: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None
