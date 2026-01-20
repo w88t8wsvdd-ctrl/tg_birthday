@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Диагностика проблемы с уведомлениями."""
+"""Диагностика проблемы с уведомлениями - исправленная версия."""
 
 import sys
 import os
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 import asyncio
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -20,14 +20,17 @@ def check_system():
         print(f"   ✅ config: BOT_TOKEN={'установлен' if BOT_TOKEN else 'НЕТ'}")
         print(f"   ✅ config: Пользователи: {AUTHORIZED_USER_IDS}")
         print(f"   ✅ config: Файл данных: {DATA_FILE}")
+        return True
     except Exception as e:
         print(f"   ❌ config: {e}")
         return False
-    
-    # 2. Проверка файла данных
+
+def check_data():
+    """Проверка файла данных."""
     print("\n2. 📁 Проверка файла данных...")
-    if os.path.exists(DATA_FILE):
-        try:
+    try:
+        from config import DATA_FILE
+        if os.path.exists(DATA_FILE):
             with open(DATA_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             print(f"   ✅ Файл существует: {DATA_FILE}")
@@ -38,18 +41,21 @@ def check_system():
                 print(f"   📊 Примеры записей:")
                 for i, item in enumerate(data[:3], 1):
                     print(f"     {i}. {item.get('name', 'N/A')} - {item.get('birthday', 'N/A')}")
-        except Exception as e:
-            print(f"   ❌ Ошибка чтения файла: {e}")
+            return True
+        else:
+            print(f"   ❌ Файл не существует: {DATA_FILE}")
             return False
-    else:
-        print(f"   ❌ Файл не существует: {DATA_FILE}")
-        print(f"   💡 Решение: отправьте Excel-файл боту")
+    except Exception as e:
+        print(f"   ❌ Ошибка чтения файла: {e}")
         return False
-    
-    # 3. Проверка утилит
+
+def check_utils():
+    """Проверка утилит."""
     print("\n3. ⚙️ Проверка утилит...")
     try:
         from utils import get_today_date, get_tomorrow_date, load_birthdays
+        from config import DATA_FILE
+        
         today = get_today_date()
         tomorrow = get_tomorrow_date()
         print(f"   ✅ utils: Сегодня - {today}")
@@ -58,43 +64,27 @@ def check_system():
         # Проверка загрузки данных
         birthdays = load_birthdays(DATA_FILE)
         print(f"   ✅ utils: Данные загружены ({len(birthdays)} записей)")
-    except Exception as e:
-        print(f"   ❌ utils: {e}")
-        return False
-    
-    # 4. Проверка планировщика
-    print("\n4. ⏰ Проверка планировщика...")
-    try:
-        from scheduler import send_birthday_notifications
-        print("   ✅ Функция send_birthday_notifications найдена")
         
-        # Тестовая проверка данных
-        birthdays = load_birthdays(DATA_FILE)
-        today = get_today_date()
-        tomorrow = get_tomorrow_date()
-        
+        # Ищем совпадения
         today_birthdays = [b['name'] for b in birthdays if b['birthday'] == today]
         tomorrow_birthdays = [b['name'] for b in birthdays if b['birthday'] == tomorrow]
         
-        print(f"   📅 Совпадений на сегодня ({today}): {len(today_birthdays)}")
-        print(f"   📅 Совпадений на завтра ({tomorrow}): {len(tomorrow_birthdays)}")
+        print(f"   🎂 Совпадений на сегодня: {len(today_birthdays)}")
+        print(f"   📅 Совпадений на завтра: {len(tomorrow_birthdays)}")
         
         if today_birthdays:
-            print(f"   🎂 Сегодня: {', '.join(today_birthdays)}")
+            print(f"   👤 Сегодня дни рождения у: {', '.join(today_birthdays)}")
         if tomorrow_birthdays:
-            print(f"   📅 Завтра: {', '.join(tomorrow_birthdays)}")
-        
+            print(f"   👤 Завтра дни рождения у: {', '.join(tomorrow_birthdays)}")
+            
+        return True
     except Exception as e:
-        print(f"   ❌ scheduler: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"   ❌ utils: {e}")
         return False
-    
-    return True  # Пропускаем проверку Telegram API для синхронной проверки
 
 async def check_telegram_api():
     """Асинхронная проверка Telegram API."""
-    print("\n5. 🤖 Проверка Telegram API (асинхронно)...")
+    print("\n5. 🤖 Проверка Telegram API...")
     try:
         from telegram import Bot
         from config import BOT_TOKEN
@@ -111,61 +101,12 @@ async def check_telegram_api():
         
     except Exception as e:
         print(f"   ❌ Telegram API: {e}")
-        print(f"   💡 Проверьте BOT_TOKEN в .env файле")
         return False
 
-def test_notification():
-    """Тест отправки уведомления."""
+async def send_real_notification():
+    """Реальная отправка тестового уведомления."""
     print("\n" + "=" * 60)
-    print("🚀 ТЕСТ ОТПРАВКИ УВЕДОМЛЕНИЯ")
-    print("=" * 60)
-    
-    try:
-        from scheduler import send_birthday_notifications
-        from config import AUTHORIZED_USER_IDS
-        
-        print("🔄 Запуск функции отправки уведомлений...")
-        
-        # Мокаем отправку для теста
-        import scheduler
-        original_send = scheduler.Bot.send_message
-        sent_messages = []
-        
-        def mock_send_message(chat_id, text, **kwargs):
-            sent_messages.append((chat_id, text))
-            print(f"\n📨 МОК-ОТПРАВКА пользователю {chat_id}:")
-            print("-" * 40)
-            print(text)
-            print("-" * 40)
-            return True
-        
-        scheduler.Bot.send_message = mock_send_message
-        
-        # Запускаем
-        send_birthday_notifications()
-        
-        # Восстанавливаем
-        scheduler.Bot.send_message = original_send
-        
-        if sent_messages:
-            print(f"\n✅ Уведомления сгенерированы: {len(sent_messages)}")
-            for chat_id, text in sent_messages:
-                print(f"   👤 Пользователь {chat_id}: {len(text)} символов")
-        else:
-            print("\nℹ️ Уведомлений не было (нет дней рождения на сегодня/завтра)")
-            
-        return True
-        
-    except Exception as e:
-        print(f"\n❌ Ошибка: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-async def manual_notification():
-    """Ручная отправка тестового уведомления."""
-    print("\n" + "=" * 60)
-    print("👨‍💻 РУЧНАЯ ОТПРАВКА УВЕДОМЛЕНИЯ")
+    print("🚀 РЕАЛЬНАЯ ОТПРАВКА ТЕСТОВОГО УВЕДОМЛЕНИЯ")
     print("=" * 60)
     
     try:
@@ -174,20 +115,34 @@ async def manual_notification():
         
         if not AUTHORIZED_USER_IDS:
             print("❌ Нет авторизованных пользователей")
-            return
+            return False
         
         bot = Bot(token=BOT_TOKEN)
         
-        test_message = (
-            "🔔 **ТЕСТОВОЕ УВЕДОМЛЕНИЕ**\n\n"
-            f"Время отправки: {datetime.now().strftime('%H:%M:%S')}\n"
-            f"Бот работает! ✅\n\n"
-            "Если вы видите это сообщение, значит:\n"
-            "1. 🤖 Бот активен\n"
-            "2. 📨 Отправка сообщений работает\n"
-            "3. 👤 Вы авторизованы\n\n"
-            "🎉 Поздравления будут приходить каждый день в 09:00!"
-        )
+        # Получаем данные для персонализированного сообщения
+        from utils import get_today_date, load_birthdays
+        from config import DATA_FILE
+        
+        today = get_today_date()
+        birthdays = load_birthdays(DATA_FILE)
+        today_birthdays = [b['name'] for b in birthdays if b['birthday'] == today]
+        
+        if today_birthdays:
+            test_message = (
+                f"🎂 **Тестовое уведомление**\n\n"
+                f"Сегодня ({today}) день рождения у:\n"
+                f"{', '.join(today_birthdays)}\n\n"
+                f"✅ Система работает корректно!\n"
+                f"🕐 Время проверки: {datetime.now().strftime('%H:%M:%S')}"
+            )
+        else:
+            test_message = (
+                f"🔔 **Тестовое уведомление**\n\n"
+                f"Сегодня ({today}) дней рождения нет.\n"
+                f"✅ Система работает корректно!\n"
+                f"🕐 Время проверки: {datetime.now().strftime('%H:%M:%S')}\n\n"
+                f"Уведомления будут приходить каждый день в 09:00!"
+            )
         
         successful = 0
         for user_id in AUTHORIZED_USER_IDS:
@@ -202,44 +157,168 @@ async def manual_notification():
         
     except Exception as e:
         print(f"❌ Общая ошибка: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+async def test_scheduler_function():
+    """Тестирует функцию планировщика напрямую."""
+    print("\n" + "=" * 60)
+    print("🧪 ТЕСТ ФУНКЦИИ ПЛАНИРОВЩИКА")
+    print("=" * 60)
+    
+    try:
+        # Импортируем нужные функции
+        from utils import get_today_date, get_tomorrow_date, load_birthdays, format_birthday_message
+        from config import DATA_FILE, AUTHORIZED_USER_IDS
+        from telegram import Bot
+        from config import BOT_TOKEN
+        
+        # Загружаем данные
+        birthdays = load_birthdays(DATA_FILE)
+        today = get_today_date()
+        tomorrow = get_tomorrow_date()
+        
+        print(f"📅 Сегодня: {today}, Завтра: {tomorrow}")
+        print(f"📊 Всего записей: {len(birthdays)}")
+        
+        # Ищем совпадения
+        today_birthdays = [b['name'] for b in birthdays if b['birthday'] == today]
+        tomorrow_birthdays = [b['name'] for b in birthdays if b['birthday'] == tomorrow]
+        
+        print(f"🎂 На сегодня: {len(today_birthdays)}, На завтра: {len(tomorrow_birthdays)}")
+        
+        # Формируем сообщение
+        messages = []
+        
+        if today_birthdays:
+            today_message = format_birthday_message(today_birthdays, is_today=True)
+            messages.append(today_message)
+            print(f"\n📝 Сообщение на сегодня:\n{today_message[:100]}...")
+        
+        if tomorrow_birthdays:
+            tomorrow_message = format_birthday_message(tomorrow_birthdays, is_today=False)
+            messages.append(tomorrow_message)
+            print(f"\n📝 Сообщение на завтра:\n{tomorrow_message[:100]}...")
+        
+        if messages:
+            message_text = "\n\n".join(messages)
+            print(f"\n📨 Итоговое сообщение ({len(message_text)} символов):")
+            print("-" * 40)
+            print(message_text[:200] + "..." if len(message_text) > 200 else message_text)
+            print("-" * 40)
+            
+            # Проверяем, можем ли отправить
+            print("\n🔍 Проверка возможности отправки...")
+            bot = Bot(token=BOT_TOKEN)
+            
+            for user_id in AUTHORIZED_USER_IDS:
+                try:
+                    # Пробуем отправить короткое тестовое сообщение
+                    await bot.send_message(
+                        chat_id=user_id,
+                        text="✅ Тест отправки сообщений работает!",
+                        parse_mode='HTML'
+                    )
+                    print(f"   ✅ Пользователь {user_id}: отправка работает")
+                except Exception as e:
+                    print(f"   ❌ Пользователь {user_id}: {e}")
+                    
+            return True
+        else:
+            print("\nℹ️ Нет сообщений для отправки (нет дней рождения)")
+            return True
+            
+    except Exception as e:
+        print(f"\n❌ Ошибка теста: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 async def main_async():
     """Асинхронная основная функция."""
-    if check_system():
-        print("\n" + "=" * 60)
-        print("✅ СИСТЕМА ПРОВЕРЕНА")
-        print("=" * 60)
+    
+    # Проверка системы
+    if not check_system():
+        print("\n❌ Проблема с конфигурацией")
+        return
+    
+    if not check_data():
+        print("\n❌ Проблема с данными")
+        return
+    
+    if not check_utils():
+        print("\n❌ Проблема с утилитами")
+        return
+    
+    print("\n" + "=" * 60)
+    print("✅ БАЗОВАЯ СИСТЕМА ПРОВЕРЕНА")
+    print("=" * 60)
+    
+    # Проверяем Telegram API
+    telegram_ok = await check_telegram_api()
+    
+    if not telegram_ok:
+        print("\n⚠️ Telegram API не работает. Проверьте токен.")
+        return
+    
+    # Тестируем функцию планировщика
+    print("\n" + "=" * 60)
+    print("🧪 ТЕСТИРОВАНИЕ ПОЛНОЙ ЦЕПОЧКИ")
+    print("=" * 60)
+    
+    await test_scheduler_function()
+    
+    # Предлагаем отправить реальное уведомление
+    print("\n" + "=" * 60)
+    print("📨 ОТПРАВИТЬ РЕАЛЬНОЕ ТЕСТОВОЕ УВЕДОМЛЕНИЕ?")
+    print("=" * 60)
+    print("Это отправит настоящее сообщение всем пользователям.")
+    
+    try:
+        # В неинтерактивном режиме (Railway) просто пропускаем
+        print("\nДля отправки введите 'y', для пропуска - любую другую клавишу...")
         
-        # Проверяем Telegram API
-        telegram_ok = await check_telegram_api()
-        
-        if telegram_ok:
-            # Тест уведомлений
-            test_notification()
-            
-            # Предлагаем ручную отправку
-            print("\n" + "=" * 60)
-            choice = input("Отправить тестовое уведомление? (y/n): ")
-            if choice.lower() == 'y':
-                await manual_notification()
+        # Читаем из stdin если доступно
+        import select
+        if select.select([sys.stdin], [], [], 5)[0]:
+            choice = sys.stdin.readline().strip().lower()
         else:
-            print("\n⚠️ Telegram API не работает. Проверьте токен и подключение.")
-        
-    else:
-        print("\n" + "=" * 60)
-        print("❌ ЕСТЬ ПРОБЛЕМЫ В СИСТЕМЕ")
-        print("=" * 60)
+            print("\n⏰ Таймаут, пропускаем интерактивную часть...")
+            choice = 'n'
+            
+        if choice == 'y':
+            await send_real_notification()
+        else:
+            print("\n⚠️ Тестовая отправка пропущена.")
+            
+    except Exception as e:
+        print(f"\n⚠️ Интерактивный режим недоступен: {e}")
+        print("Пропускаем отправку...")
+    
+    print("\n" + "=" * 60)
+    print("🎉 ДИАГНОСТИКА ЗАВЕРШЕНА")
+    print("=" * 60)
+    print("\n📋 РЕКОМЕНДАЦИИ:")
+    print("1. Если все тесты пройдены ✅ - система работает")
+    print("2. Уведомления будут отправляться в 09:00 каждый день")
+    print("3. Используйте команду /test в боте для проверки")
+    print("4. Проверьте логи планировщика")
 
 def main():
     """Синхронная точка входа."""
-    # Запускаем асинхронную функцию
-    if hasattr(asyncio, 'run'):
-        asyncio.run(main_async())
-    else:
-        # Для старых версий Python
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(main_async())
+    try:
+        # Запускаем асинхронную функцию
+        if hasattr(asyncio, 'run'):
+            asyncio.run(main_async())
+        else:
+            # Для старых версий Python
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(main_async())
+    except KeyboardInterrupt:
+        print("\n\n👋 Диагностика прервана пользователем")
+    except Exception as e:
+        print(f"\n❌ Неожиданная ошибка: {e}")
 
 if __name__ == '__main__':
     main()
