@@ -169,7 +169,7 @@ def setup_scheduler():
         # Задача на 09:00 каждый день (по Москве)
         scheduler.add_job(
             send_birthday_notifications,
-            CronTrigger(hour=9, minute=0, timezone='Europe/Moscow'),
+            CronTrigger(hour=11, minute=45, timezone='Europe/Moscow'),
             id='birthday_notifications',
             name='Ежедневные уведомления о днях рождения',
             replace_existing=True
