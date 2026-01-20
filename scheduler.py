@@ -6,6 +6,7 @@ import logging
 import atexit
 import sys
 import os
+import asyncio
 
 # Добавляем путь для импортов
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -15,8 +16,28 @@ from utils import load_birthdays, get_today_date, get_tomorrow_date
 
 logger = logging.getLogger(__name__)
 
+def send_message_sync(bot, chat_id, text, parse_mode='HTML'):
+    """Синхронная обертка для отправки сообщений."""
+    try:
+        # Создаем новый event loop для синхронного вызова
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            # Запускаем асинхронную функцию синхронно
+            result = loop.run_until_complete(
+                bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode)
+            )
+            return result
+        finally:
+            loop.close()
+            
+    except Exception as e:
+        logger.error(f"Ошибка отправки сообщения: {e}")
+        raise
+
 def send_birthday_notifications():
-    """Отправляет уведомления о днях рождения."""
+    """Отправляет уведомления о днях рождения (синхронная версия)."""
     try:
         logger.info("🔄 Начало отправки уведомлений...")
         
@@ -25,6 +46,7 @@ def send_birthday_notifications():
             logger.error("❌ BOT_TOKEN не установлен или имеет значение по умолчанию")
             return
         
+        # Создаем бота
         bot = Bot(token=BOT_TOKEN)
         
         # Проверяем пользователей
@@ -113,11 +135,8 @@ def send_birthday_notifications():
             
             for user_id in AUTHORIZED_USER_IDS:
                 try:
-                    bot.send_message(
-                        chat_id=user_id, 
-                        text=message_text,
-                        parse_mode='HTML'
-                    )
+                    # Используем синхронную обертку
+                    send_message_sync(bot, user_id, message_text, 'HTML')
                     logger.info(f"✅ Отправлено пользователю {user_id}")
                     successful_sends += 1
                     
@@ -147,7 +166,7 @@ def setup_scheduler():
         
         scheduler = BackgroundScheduler()
         
-        # Задача на 09:00 каждый день
+        # Задача на 09:00 каждый день (по Москве)
         scheduler.add_job(
             send_birthday_notifications,
             CronTrigger(hour=9, minute=0, timezone='Europe/Moscow'),
@@ -156,13 +175,13 @@ def setup_scheduler():
             replace_existing=True
         )
         
-        # Тестовая задача - каждые 30 минут для отладки
+        # Тестовая задача - запуск при старте для проверки
         scheduler.add_job(
-            lambda: logger.info("🔄 Планировщик работает (тестовая задача)"),
-            'interval',
-            minutes=30,
-            id='test_job',
-            name='Тестовая задача'
+            lambda: logger.info("✅ Планировщик инициализирован"),
+            'date',
+            run_date=None,  # Сразу
+            id='init_job',
+            name='Инициализация'
         )
         
         # Останавливаем планировщик при выходе
@@ -175,8 +194,11 @@ def setup_scheduler():
         logger.info(f"✅ Планировщик запущен. Задач: {len(jobs)}")
         
         for job in jobs:
-            next_run = job.next_run_time.strftime('%Y-%m-%d %H:%M:%S') if job.next_run_time else 'N/A'
-            logger.info(f"   📅 Задача '{job.name}': следующее выполнение {next_run}")
+            if job.next_run_time:
+                next_run = job.next_run_time.strftime('%Y-%m-%d %H:%M:%S')
+                logger.info(f"   📅 Задача '{job.name}': следующее выполнение {next_run}")
+            else:
+                logger.info(f"   📅 Задача '{job.name}': выполнена")
         
         return scheduler
         
