@@ -5,6 +5,7 @@ import sys
 import os
 import json
 from datetime import datetime, timedelta
+import asyncio
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -89,20 +90,29 @@ def check_system():
         traceback.print_exc()
         return False
     
-    # 5. Проверка Telegram API
-    print("\n5. 🤖 Проверка Telegram API...")
+    return True  # Пропускаем проверку Telegram API для синхронной проверки
+
+async def check_telegram_api():
+    """Асинхронная проверка Telegram API."""
+    print("\n5. 🤖 Проверка Telegram API (асинхронно)...")
     try:
         from telegram import Bot
+        from config import BOT_TOKEN
+        
+        if not BOT_TOKEN or BOT_TOKEN == 'ваш_токен_бота_от_BotFather':
+            print(f"   ❌ BOT_TOKEN не установлен или имеет значение по умолчанию")
+            return False
+        
         bot = Bot(token=BOT_TOKEN)
-        me = bot.get_me()
+        me = await bot.get_me()
         print(f"   ✅ Бот: @{me.username} ({me.first_name})")
         print(f"   ✅ Бот ID: {me.id}")
+        return True
+        
     except Exception as e:
         print(f"   ❌ Telegram API: {e}")
         print(f"   💡 Проверьте BOT_TOKEN в .env файле")
         return False
-    
-    return True
 
 def test_notification():
     """Тест отправки уведомления."""
@@ -152,7 +162,7 @@ def test_notification():
         traceback.print_exc()
         return False
 
-def manual_notification():
+async def manual_notification():
     """Ручная отправка тестового уведомления."""
     print("\n" + "=" * 60)
     print("👨‍💻 РУЧНАЯ ОТПРАВКА УВЕДОМЛЕНИЯ")
@@ -179,32 +189,57 @@ def manual_notification():
             "🎉 Поздравления будут приходить каждый день в 09:00!"
         )
         
+        successful = 0
         for user_id in AUTHORIZED_USER_IDS:
             try:
-                bot.send_message(chat_id=user_id, text=test_message, parse_mode='Markdown')
+                await bot.send_message(chat_id=user_id, text=test_message, parse_mode='Markdown')
                 print(f"✅ Тестовое сообщение отправлено пользователю {user_id}")
+                successful += 1
             except Exception as e:
                 print(f"❌ Ошибка отправки пользователю {user_id}: {e}")
-                
+        
+        return successful > 0
+        
     except Exception as e:
         print(f"❌ Общая ошибка: {e}")
+        return False
 
-if __name__ == '__main__':
+async def main_async():
+    """Асинхронная основная функция."""
     if check_system():
         print("\n" + "=" * 60)
         print("✅ СИСТЕМА ПРОВЕРЕНА")
         print("=" * 60)
         
-        # Тест уведомлений
-        test_notification()
+        # Проверяем Telegram API
+        telegram_ok = await check_telegram_api()
         
-        # Предлагаем ручную отправку
-        print("\n" + "=" * 60)
-        choice = input("Отправить тестовое уведомление? (y/n): ")
-        if choice.lower() == 'y':
-            manual_notification()
+        if telegram_ok:
+            # Тест уведомлений
+            test_notification()
+            
+            # Предлагаем ручную отправку
+            print("\n" + "=" * 60)
+            choice = input("Отправить тестовое уведомление? (y/n): ")
+            if choice.lower() == 'y':
+                await manual_notification()
+        else:
+            print("\n⚠️ Telegram API не работает. Проверьте токен и подключение.")
         
     else:
         print("\n" + "=" * 60)
         print("❌ ЕСТЬ ПРОБЛЕМЫ В СИСТЕМЕ")
         print("=" * 60)
+
+def main():
+    """Синхронная точка входа."""
+    # Запускаем асинхронную функцию
+    if hasattr(asyncio, 'run'):
+        asyncio.run(main_async())
+    else:
+        # Для старых версий Python
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(main_async())
+
+if __name__ == '__main__':
+    main()
