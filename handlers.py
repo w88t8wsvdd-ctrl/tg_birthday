@@ -6,7 +6,7 @@ from telegram import Update
 from telegram.ext import ContextTypes, MessageHandler, filters
 
 from config import AUTHORIZED_USER_IDS, DATA_FILE
-from utils import save_birthdays, parse_birthday_date, load_birthdays, get_upcoming_birthdays
+from utils import save_birthdays, parse_birthday_date, load_birthdays, get_upcoming_birthdays, extract_first_name
 
 logger = logging.getLogger(__name__)
 
