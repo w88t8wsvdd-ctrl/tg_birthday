@@ -77,7 +77,7 @@ def extract_first_name(full_name: str) -> str:
 def format_birthday_message(names: list, is_today: bool = True) -> str:
     """
     Форматирует сообщение о днях рождения с уникальными поздравлениями.
-    Извлекает только имена для поздравления.
+    В заголовке показывает полное имя, в поздравлении - только имя.
     """
     try:
         from greetings_generator import generate_greeting, generate_collective_greeting
@@ -87,38 +87,39 @@ def format_birthday_message(names: list, is_today: bool = True) -> str:
         
         day_word = "🎂 Сегодня" if is_today else "📅 Завтра"
         
-        # Извлекаем имена для отображения в заголовке
-        display_names = [extract_first_name(name) for name in names]
-        
         if len(names) == 1:
-            # Для одного человека - персонализированное поздравление
-            name = names[0]
-            greeting = generate_greeting(name, min_sentences=3, max_sentences=4)
-            display_name = display_names[0]
-            return f"{day_word} день рождения у {display_name}!\n\n{greeting}"
+            # Для одного человека
+            full_name = names[0]
+            # Извлекаем имя для поздравления
+            greeting_name = extract_first_name(full_name)
+            # Генерируем поздравление (бот сам извлечет имя)
+            greeting = generate_greeting(full_name, min_sentences=3, max_sentences=4)
+            
+            # В заголовке - полное имя, в поздравлении - только имя
+            return f"{day_word} день рождения у {full_name}!\n\n{greeting}"
         
         else:
-            # Для нескольких людей - коллективное поздравление
-            names_str = ", ".join(display_names)
-            # Используем оригинальные имена для генератора (он сам извлечет)
+            # Для нескольких людей
+            # В заголовке - полные имена
+            full_names_str = ", ".join(names)
+            # Для генератора используем оригинальные имена (он сам извлечет)
             collective_greeting = generate_collective_greeting(names)
             
             if is_today:
-                return f"🎉 {day_word} дни рождения у: {names_str}!\n\n{collective_greeting}"
+                return f"🎉 {day_word} дни рождения у: {full_names_str}!\n\n{collective_greeting}"
             else:
-                return f"📅 {day_word} дни рождения у: {names_str}!\n\n{collective_greeting}"
+                return f"📅 {day_word} дни рождения у: {full_names_str}!\n\n{collective_greeting}"
                 
     except ImportError as e:
         # Fallback если генератор не установлен
         logger.warning(f"Генератор поздравлений не найден: {e}")
-        display_names = [extract_first_name(name) for name in names]
         
-        if len(display_names) == 1:
-            return f"{day_word} день рождения у {display_names[0]}!"
+        if len(names) == 1:
+            return f"{day_word} день рождения у {names[0]}!"
         else:
-            names_str = ", ".join(display_names)
+            names_str = ", ".join(names)
             return f"{day_word} дни рождения у: {names_str}!"
-
+                
 # ===================== ФУНКЦИИ ПАРСИНГА ДАТ =====================
 
 def parse_birthday_date(date_value) -> str:
