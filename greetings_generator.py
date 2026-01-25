@@ -392,26 +392,27 @@ class ImprovedGreetingGenerator:
         
         return greeting_text
     
-    def generate_collective_greeting(self, names: List[str]) -> str:
+def generate_collective_greeting(self, names: List[str]) -> str:
         """Генерирует коллективное поздравление."""
         if not names:
             return ""
         
-        # Извлекаем первые имена
+        # Извлекаем имена для обращения
         first_names = [self._extract_name_for_greeting(name) for name in names]
-        names_str = ", ".join(first_names)
+        # Полные имена для заголовка
+        full_names_str = ", ".join(names)
         
-        # Определяем, есть ли в списке женщины
+        # Определяем состав для правильного обращения
         has_females = any(self.gender_detector.detect_gender(name) == 'female' for name in names)
         has_males = any(self.gender_detector.detect_gender(name) == 'male' for name in names)
         
         # Выбираем обращение в зависимости от состава
         if has_females and not has_males:
-            address = f"Дорогие {names_str}"
+            address = "Дорогие именинницы"
         elif has_males and not has_females:
-            address = f"Дорогие {names_str}"
+            address = "Дорогие именинники"
         else:
-            address = f"Дорогие {names_str}"
+            address = "Дорогие именинники"
         
         templates = [
             f"{address}! От всей души поздравляем вас с днём рождения! "
@@ -424,7 +425,10 @@ class ImprovedGreetingGenerator:
             
             f"{address}! Примите самые тёплые поздравления! "
             f"Желаем неиссякаемой энергии, вдохновения и удачи! "
-            f"Пусть все мечты сбываются, а планы реализуются! 💫🎁❤️"
+            f"Пусть все мечты сбываются, а планы реализуются! 💫🎁❤️",
+            
+            f"Дорогие {', '.join(first_names)}! От всей души поздравляем вас с днём рождения! "
+            f"Желаем крепкого здоровья и счастья в этот праздничный день! 🎉✨"
         ]
         
         return random.choice(templates)
