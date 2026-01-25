@@ -235,62 +235,111 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def nearest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /nearest - показывает ближайшие дни рождения."""
     user_id = update.effective_user.id
-
+    
     if user_id not in AUTHORIZED_USER_IDS:
         await update.message.reply_text("🚫 У вас нет доступа к этому боту.")
         return
-
+    
     try:
         # Загружаем данные
         birthdays = load_birthdays(DATA_FILE)
-
+        
         if not birthdays:
             await update.message.reply_text("📭 Список дней рождения пуст.\nОтправьте Excel-файл с данными.")
             return
-
+        
         # Получаем ближайшие дни рождения (на 7 дней вперед)
         upcoming = get_upcoming_birthdays(birthdays, days_ahead=7)
-
+        
         if not upcoming:
             await update.message.reply_text(
                 "📅 На ближайшую неделю дней рождения нет.\n"
                 "Следующий день рождения будет отображен в ежедневных уведомлениях."
             )
             return
-
-        # Формируем сообщение
+        
+        # Формируем сообщение с поздравлениями
         message_lines = ["📅 **Ближайшие дни рождения:**\n"]
-
+        
         # Группируем по дням
-        current_day = None
+        from collections import defaultdict
+        birthdays_by_day = defaultdict(list)
+        
         for bd in upcoming:
-            if bd['day_description'] != current_day:
-                if bd['day_offset'] == 0:
-                    message_lines.append(f"\n🎂 **Сегодня ({bd['date']})**:")
-                elif bd['day_offset'] == 1:
-                    message_lines.append(f"\n📆 **Завтра ({bd['date']})**:")
-                elif bd['day_offset'] == 2:
-                    message_lines.append(f"\n📆 **Послезавтра ({bd['date']})**:")
-                else:
-                    day_word = "дней" if bd['day_offset'] > 4 else "дня"
-                    message_lines.append(f"\n📆 **{bd['date']}** (через {bd['day_offset']} {day_word}):")
-                current_day = bd['day_description']
-
-            message_lines.append(f"  • {bd['name']}")
-
+            birthdays_by_day[bd['day_offset']].append(bd)
+        
+        # Для каждого дня формируем сообщение
+        for day_offset in sorted(birthdays_by_day.keys()):
+            day_birthdays = birthdays_by_day[day_offset]
+            
+            # Определяем описание дня
+            if day_offset == 0:
+                day_desc = "Сегодня"
+                emoji = "🎂"
+            elif day_offset == 1:
+                day_desc = "Завтра"
+                emoji = "📅"
+            elif day_offset == 2:
+                day_desc = "Послезавтра"
+                emoji = "📆"
+            else:
+                day_desc = f"Через {day_offset} дней"
+                emoji = "🗓️"
+            
+            # Полные имена для заголовка
+            full_names = [bd['name'] for bd in day_birthdays]
+            full_names_str = ", ".join(full_names)
+            
+            message_lines.append(f"\n{emoji} **{day_desc} ({day_birthdays[0]['date']})**: {full_names_str}")
+            
+            # Для каждого человека добавляем персональное поздравление
+            from greetings_generator import generate_greeting
+            
+            for bd in day_birthdays:
+                greeting = generate_greeting(bd['name'])
+                # Показываем полное поздравление
+                message_lines.append(f"\n  • {greeting}")
+        
         # Добавляем статистику
-        today_birthdays = [b for b in upcoming if b['day_offset'] == 0]
-        tomorrow_birthdays = [b for b in upcoming if b['day_offset'] == 1]
-
-        if today_birthdays:
-            message_lines.append(f"\n🎉 Сегодня празднуют: {len(today_birthdays)} человек")
-        if tomorrow_birthdays:
-            message_lines.append(f"📈 Завтра празднуют: {len(tomorrow_birthdays)} человек")
-
-        message_lines.append(f"\nВсего в ближайшие 7 дней: {len(upcoming)} дней рождения")
-
-        await update.message.reply_text("\n".join(message_lines))
-
+        today_count = len([b for b in upcoming if b['day_offset'] == 0])
+        tomorrow_count = len([b for b in upcoming if b['day_offset'] == 1])
+        
+        message_lines.append(f"\n📊 **Статистика:**")
+        if today_count > 0:
+            message_lines.append(f"🎉 Сегодня празднуют: {today_count} человек")
+        if tomorrow_count > 0:
+            message_lines.append(f"📈 Завтра празднуют: {tomorrow_count} человек")
+        
+        message_lines.append(f"📋 Всего в ближайшие 7 дней: {len(upcoming)} дней рождения")
+        
+        # Добавляем общее пожелание
+        from greetings_generator import get_collective_greeting
+        if len(upcoming) > 0:
+            # Используем имена из upcoming для коллективного поздравления
+            upcoming_names = [bd['name'] for bd in upcoming]
+            message_lines.append(f"\n{get_collective_greeting(upcoming_names)}")
+        
+        # Отправляем сообщение (разбиваем если слишком длинное)
+        full_message = "\n".join(message_lines)
+        
+        if len(full_message) > 4000:
+            # Разбиваем на части по 4000 символов
+            parts = []
+            while len(full_message) > 0:
+                part = full_message[:4000]
+                parts.append(part)
+                full_message = full_message[4000:]
+            
+            # Отправляем первую часть
+            await update.message.reply_text(parts[0])
+            
+            # Отправляем остальные части с задержкой
+            for part in parts[1:]:
+                await asyncio.sleep(0.5)
+                await update.message.reply_text(part)
+        else:
+            await update.message.reply_text(full_message)
+        
     except Exception as e:
         logger.error(f"Ошибка в команде /nearest: {e}")
         await update.message.reply_text("❌ Произошла ошибка при получении данных")
@@ -298,45 +347,46 @@ async def nearest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /list - показывает все дни рождения."""
     user_id = update.effective_user.id
-
+    
     if user_id not in AUTHORIZED_USER_IDS:
         await update.message.reply_text("🚫 У вас нет доступа к этому боту.")
         return
-
+    
     try:
         # Загружаем данные
         birthdays = load_birthdays(DATA_FILE)
-
+        
         if not birthdays:
             await update.message.reply_text("📭 Список дней рождения пуст.\nОтправьте Excel-файл с данными.")
             return
-
+        
         # Сортируем по дате (по месяцу и дню)
         def sort_key(bd):
             day, month = map(int, bd['birthday'].split('.'))
             return (month, day)
-
+        
         sorted_birthdays = sorted(birthdays, key=sort_key)
-
-        # Формируем сообщение
+        
+        # Формируем сообщение - ТОЛЬКО ПОЛНЫЕ ИМЕНА
         message_lines = [f"📋 **Все дни рождения** ({len(sorted_birthdays)} записей):\n"]
-
+        
         # Группируем по месяцам
         months = {
             1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
             5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
             9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь"
         }
-
+        
         current_month = None
         for bd in sorted_birthdays:
             month = int(bd['birthday'].split('.')[1])
             if month != current_month:
                 message_lines.append(f"\n**{months[month]}**:")
                 current_month = month
-
+            
+            # Показываем только полное имя
             message_lines.append(f"  {bd['birthday']} - {bd['name']}")
-
+        
         # Если сообщение слишком длинное, разбиваем на части
         message_text = "\n".join(message_lines)
         if len(message_text) > 4000:  # Ограничение Telegram
@@ -344,7 +394,7 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parts = []
             current_part = []
             current_length = 0
-
+            
             for line in message_lines:
                 if current_length + len(line) + 1 > 4000:
                     parts.append("\n".join(current_part))
@@ -353,20 +403,20 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     current_part.append(line)
                     current_length += len(line) + 1
-
+            
             if current_part:
                 parts.append("\n".join(current_part))
-
+            
             # Отправляем первую часть
             await update.message.reply_text(parts[0])
-
+            
             # Отправляем остальные части с задержкой
             for part in parts[1:]:
                 await asyncio.sleep(0.5)
                 await update.message.reply_text(part)
         else:
             await update.message.reply_text(message_text)
-
+        
     except Exception as e:
         logger.error(f"Ошибка в команде /list: {e}")
         await update.message.reply_text("❌ Произошла ошибка при получении данных")
