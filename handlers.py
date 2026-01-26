@@ -241,12 +241,17 @@ async def nearest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     try:
+        logger.info(f"Команда /nearest от пользователя {user_id}")
+        
         # Загружаем данные
+        from utils import load_birthdays, get_upcoming_birthdays
         birthdays = load_birthdays(DATA_FILE)
         
         if not birthdays:
             await update.message.reply_text("📭 Список дней рождения пуст.\nОтправьте Excel-файл с данными.")
             return
+        
+        logger.info(f"Загружено {len(birthdays)} записей")
         
         # Получаем ближайшие дни рождения (на 7 дней вперед)
         upcoming = get_upcoming_birthdays(birthdays, days_ahead=7)
@@ -258,6 +263,8 @@ async def nearest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
+        logger.info(f"Найдено {len(upcoming)} ближайших дней рождения")
+        
         # Формируем сообщение с поздравлениями
         message_lines = ["📅 **Ближайшие дни рождения:**\n"]
         
@@ -267,6 +274,8 @@ async def nearest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         for bd in upcoming:
             birthdays_by_day[bd['day_offset']].append(bd)
+        
+        logger.info(f"Группировка по дням: {len(birthdays_by_day)} дней")
         
         # Для каждого дня формируем сообщение
         for day_offset in sorted(birthdays_by_day.keys()):
@@ -293,12 +302,19 @@ async def nearest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message_lines.append(f"\n{emoji} **{day_desc} ({day_birthdays[0]['date']})**: {full_names_str}")
             
             # Для каждого человека добавляем персональное поздравление
-            from greetings_generator import generate_greeting
-            
-            for bd in day_birthdays:
-                greeting = generate_greeting(bd['name'])
-                # Показываем полное поздравление
-                message_lines.append(f"\n  • {greeting}")
+            try:
+                from greetings_generator import generate_greeting
+                
+                for bd in day_birthdays:
+                    greeting = generate_greeting(bd['name'])
+                    message_lines.append(f"\n  • {greeting}")
+                    
+            except Exception as e:
+                logger.error(f"Ошибка генерации поздравления для {bd['name']}: {e}")
+                # Если не удалось сгенерировать, покажем просто имя
+                from utils import extract_first_name
+                name = extract_first_name(bd['name'])
+                message_lines.append(f"\n  • {name} - с Днём рождения! 🎉")
         
         # Добавляем статистику
         today_count = len([b for b in upcoming if b['day_offset'] == 0])
@@ -313,36 +329,65 @@ async def nearest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message_lines.append(f"📋 Всего в ближайшие 7 дней: {len(upcoming)} дней рождения")
         
         # Добавляем общее пожелание
-        from greetings_generator import get_collective_greeting
-        if len(upcoming) > 0:
-            # Используем имена из upcoming для коллективного поздравления
-            upcoming_names = [bd['name'] for bd in upcoming]
-            message_lines.append(f"\n{get_collective_greeting(upcoming_names)}")
+        try:
+            from greetings_generator import get_collective_greeting
+            if len(upcoming) > 0:
+                # Используем имена из upcoming для коллективного поздравления
+                upcoming_names = [bd['name'] for bd in upcoming]
+                message_lines.append(f"\n{get_collective_greeting(upcoming_names)}")
+        except Exception as e:
+            logger.error(f"Ошибка генерации коллективного поздравления: {e}")
+            message_lines.append(f"\n🎉 Поздравляем всех именинников!")
         
         # Отправляем сообщение (разбиваем если слишком длинное)
         full_message = "\n".join(message_lines)
+        logger.info(f"Сообщение сформировано: {len(full_message)} символов")
         
         if len(full_message) > 4000:
+            logger.info("Сообщение слишком длинное, разбиваем на части")
             # Разбиваем на части по 4000 символов
             parts = []
             while len(full_message) > 0:
-                part = full_message[:4000]
-                parts.append(part)
-                full_message = full_message[4000:]
+                # Ищем хорошее место для разрыва (конец строки)
+                if len(full_message) > 4000:
+                    # Ищем последний перенос строки до 4000 символов
+                    break_point = full_message[:4000].rfind('\n')
+                    if break_point == -1:
+                        break_point = 3999
+                    part = full_message[:break_point]
+                    parts.append(part)
+                    full_message = full_message[break_point:].lstrip()
+                else:
+                    parts.append(full_message)
+                    full_message = ""
             
             # Отправляем первую часть
             await update.message.reply_text(parts[0])
+            logger.info(f"Отправлена часть 1: {len(parts[0])} символов")
             
             # Отправляем остальные части с задержкой
-            for part in parts[1:]:
+            for i, part in enumerate(parts[1:], 2):
                 await asyncio.sleep(0.5)
                 await update.message.reply_text(part)
+                logger.info(f"Отправлена часть {i}: {len(part)} символов")
         else:
             await update.message.reply_text(full_message)
+            logger.info(f"Сообщение отправлено: {len(full_message)} символов")
         
     except Exception as e:
-        logger.error(f"Ошибка в команде /nearest: {e}")
-        await update.message.reply_text("❌ Произошла ошибка при получении данных")
+        logger.error(f"Ошибка в команде /nearest: {e}", exc_info=True)
+        error_message = f"❌ Произошла ошибка при получении данных: {str(e)}"
+        
+        # Добавляем больше информации для отладки
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"Детали ошибки: {error_details}")
+        
+        # Отправляем краткое сообщение об ошибке пользователю
+        await update.message.reply_text(
+            f"❌ Произошла ошибка при получении данных.\n"
+            f"Пожалуйста, попробуйте позже или используйте команду /test для проверки системы."
+        )
 
 async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /list - показывает все дни рождения."""
