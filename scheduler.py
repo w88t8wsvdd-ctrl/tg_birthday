@@ -141,12 +141,12 @@ def send_birthday_notifications():
                     from greetings_generator import generate_collective_greeting
                     # Получаем все имена именинников
                     all_names = today_birthdays + tomorrow_birthdays
-            if all_names:
-               collective_greeting = generate_collective_greeting(all_names)
-               message_text += f"\n\n{collective_greeting}"
+                    if all_names:
+                        collective_greeting = generate_collective_greeting(all_names)
+                        message_text += f"\n\n{collective_greeting}"
                 except ImportError:
-            if today_birthdays or tomorrow_birthdays:
-               message_text += f"\n\n🎉 Поздравляем всех именинников!"
+                    if today_birthdays or tomorrow_birthdays:
+                        message_text += f"\n\n🎉 Поздравляем всех именинников!"
             
             logger.info(f"📨 Итоговое сообщение: {len(message_text)} символов")
             
