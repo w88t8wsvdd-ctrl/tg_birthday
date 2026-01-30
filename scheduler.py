@@ -19,18 +19,29 @@ logger = logging.getLogger(__name__)
 def send_message_sync(bot, chat_id, text, parse_mode='HTML'):
     """Синхронная обертка для отправки сообщений."""
     try:
-        # Создаем новый event loop для синхронного вызова
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
+        # Используем существующий event loop или создаем новый
         try:
-            # Запускаем асинхронную функцию синхронно
-            result = loop.run_until_complete(
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        if loop.is_closed():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        # Запускаем асинхронную функцию синхронно
+        if loop.is_running():
+            # Если loop уже запущен, используем run_coroutine_threadsafe
+            future = asyncio.run_coroutine_threadsafe(
+                bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode),
+                loop
+            )
+            return future.result(timeout=30)
+        else:
+            return loop.run_until_complete(
                 bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode)
             )
-            return result
-        finally:
-            loop.close()
             
     except Exception as e:
         logger.error(f"Ошибка отправки сообщения: {e}")
@@ -40,6 +51,10 @@ def send_birthday_notifications():
     """Отправляет уведомления о днях рождения (синхронная версия)."""
     try:
         logger.info("🔄 Начало отправки уведомлений...")
+        logger.info("=" * 60)
+        logger.info("🎂 ЗАПУСК ОТПРАВКИ УВЕДОМЛЕНИЙ")
+        logger.info(f"Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info("=" * 60)
         
         # Проверяем токен
         if not BOT_TOKEN or BOT_TOKEN == 'ваш_токен_бота_от_BotFather':
@@ -123,10 +138,15 @@ def send_birthday_notifications():
             # Добавляем разделитель если нужно
             if today_birthdays or tomorrow_birthdays:
                 try:
-                    from greetings_generator import get_collective_greeting
-                    message_text += f"\n\n{get_collective_greeting()}"
-                except ImportError:
-                    message_text += f"\n\n🎉 Поздравляем всех именинников!"
+    from greetings_generator import generate_collective_greeting
+    # Получаем все имена именинников
+    all_names = today_birthdays + tomorrow_birthdays
+    if all_names:
+        collective_greeting = generate_collective_greeting(all_names)
+        message_text += f"\n\n{collective_greeting}"
+except ImportError:
+    if today_birthdays or tomorrow_birthdays:
+        message_text += f"\n\n🎉 Поздравляем всех именинников!"
             
             logger.info(f"📨 Итоговое сообщение: {len(message_text)} символов")
             
