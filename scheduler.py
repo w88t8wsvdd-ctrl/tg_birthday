@@ -1,12 +1,15 @@
+# scheduler.py - ИСПРАВЛЕННАЯ ВЕРСИЯ
+
+from datetime import datetime  # <-- ВАЖНО: ДОБАВЬТЕ ЭТОТ ИМПОРТ
+import asyncio
+import logging
 from telegram import Bot
 from telegram.error import TelegramError
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-import logging
 import atexit
 import sys
 import os
-import asyncio
 
 # Добавляем путь для импортов
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -19,30 +22,15 @@ logger = logging.getLogger(__name__)
 def send_message_sync(bot, chat_id, text, parse_mode='HTML'):
     """Синхронная обертка для отправки сообщений."""
     try:
-        # Используем существующий event loop или создаем новый
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
-        if loop.is_closed():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
-        # Запускаем асинхронную функцию синхронно
-        if loop.is_running():
-            # Если loop уже запущен, используем run_coroutine_threadsafe
-            future = asyncio.run_coroutine_threadsafe(
-                bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode),
-                loop
+        # Используем asyncio.run() для Python 3.7+
+        async def send_async():
+            return await bot.send_message(
+                chat_id=chat_id, 
+                text=text, 
+                parse_mode=parse_mode
             )
-            return future.result(timeout=30)
-        else:
-            return loop.run_until_complete(
-                bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode)
-            )
-            
+        
+        return asyncio.run(send_async())
     except Exception as e:
         logger.error(f"Ошибка отправки сообщения: {e}")
         raise
@@ -50,7 +38,6 @@ def send_message_sync(bot, chat_id, text, parse_mode='HTML'):
 def send_birthday_notifications():
     """Отправляет уведомления о днях рождения (синхронная версия)."""
     try:
-        logger.info("🔄 Начало отправки уведомлений...")
         logger.info("=" * 60)
         logger.info("🎂 ЗАПУСК ОТПРАВКИ УВЕДОМЛЕНИЙ")
         logger.info(f"Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -135,18 +122,17 @@ def send_birthday_notifications():
         if messages:
             message_text = "\n\n".join(messages)
             
-            # Добавляем разделитель если нужно
-            if today_birthdays or tomorrow_birthdays:
-                try:
-                    from greetings_generator import generate_collective_greeting
-                    # Получаем все имена именинников
-                    all_names = today_birthdays + tomorrow_birthdays
-                    if all_names:
-                        collective_greeting = generate_collective_greeting(all_names)
-                        message_text += f"\n\n{collective_greeting}"
-                except ImportError:
-                    if today_birthdays or tomorrow_birthdays:
-                        message_text += f"\n\n🎉 Поздравляем всех именинников!"
+            # Добавляем коллективное поздравление если есть именинники
+            try:
+                from greetings_generator import generate_collective_greeting
+                # Получаем все имена именинников
+                all_names = today_birthdays + tomorrow_birthdays
+                if all_names:
+                    collective_greeting = generate_collective_greeting(all_names)
+                    message_text += f"\n\n{collective_greeting}"
+            except ImportError:
+                if today_birthdays or tomorrow_birthdays:
+                    message_text += f"\n\n🎉 Поздравляем всех именинников!"
             
             logger.info(f"📨 Итоговое сообщение: {len(message_text)} символов")
             
@@ -189,7 +175,7 @@ def setup_scheduler():
         # Задача на 09:00 каждый день (по Москве)
         scheduler.add_job(
             send_birthday_notifications,
-            CronTrigger(hour=11, minute=30, timezone='Europe/Moscow'),
+            CronTrigger(hour=11, minute=45, timezone='Europe/Moscow'),
             id='birthday_notifications',
             name='Ежедневные уведомления о днях рождения',
             replace_existing=True
