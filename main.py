@@ -15,6 +15,9 @@ from handlers import (
     test_command, 
     about_command, 
     greet_command
+    add_command,
+    remove_command,
+    find_command 
 )
 from scheduler import setup_scheduler
 
