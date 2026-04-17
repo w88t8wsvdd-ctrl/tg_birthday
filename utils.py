@@ -236,3 +236,37 @@ def get_upcoming_birthdays(birthdays: list, days_ahead: int = 7) -> list:
     # Сортируем по дате
     upcoming.sort(key=lambda x: x['day_offset'])
     return upcoming
+# utils.py – добавить в конец
+
+def add_birthday(name: str, birthday: str, data_file: str) -> tuple[bool, str]:
+    """Добавляет запись о дне рождения. Возвращает (успех, сообщение)."""
+    birthdays = load_birthdays(data_file)
+    # Проверка на дубликат (имя + дата)
+    for b in birthdays:
+        if b['name'].lower() == name.lower() and b['birthday'] == birthday:
+            return False, f"❌ {name} уже есть в списке с датой {birthday}."
+    birthdays.append({'name': name.strip(), 'birthday': birthday})
+    if save_birthdays(birthdays, data_file):
+        return True, f"✅ Добавлен {name} ({birthday})"
+    else:
+        return False, "❌ Ошибка сохранения"
+
+def remove_birthday(name: str, data_file: str) -> tuple[bool, str, int]:
+    """Удаляет запись(и) по имени. Возвращает (успех, сообщение, кол-во удалённых)."""
+    birthdays = load_birthdays(data_file)
+    original_len = len(birthdays)
+    # Удаляем все совпадения по имени (без учёта регистра)
+    new_birthdays = [b for b in birthdays if b['name'].lower() != name.lower()]
+    removed = original_len - len(new_birthdays)
+    if removed == 0:
+        return False, f"❌ Именинник '{name}' не найден.", 0
+    if save_birthdays(new_birthdays, data_file):
+        return True, f"✅ Удалено {removed} запись(и) для '{name}'.", removed
+    else:
+        return False, "❌ Ошибка сохранения", 0
+
+def find_birthday(name: str, data_file: str) -> list:
+    """Поиск записей по части имени."""
+    birthdays = load_birthdays(data_file)
+    name_lower = name.lower()
+    return [b for b in birthdays if name_lower in b['name'].lower()]
