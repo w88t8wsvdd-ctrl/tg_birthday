@@ -714,4 +714,77 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔍 **Подробнее:** `/greet [имя]` - тест генерации\n"
         "📋 **Все команды:** `/help`"
     )
+
+# handlers.py – добавить функции
+
+async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Добавление нового именинника: /add Имя ДД.ММ"""
+    user_id = update.effective_user.id
+    if user_id not in AUTHORIZED_USER_IDS:
+        await update.message.reply_text("🚫 Нет доступа.")
+        return
+
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text(
+            "❌ Использование: `/add Имя ДД.ММ`\n"
+            "Пример: `/add Анна 15.03`", parse_mode='Markdown'
+        )
+        return
+
+    # Последний аргумент – дата, остальное – имя (могут быть пробелы)
+    *name_parts, date_str = context.args
+    name = ' '.join(name_parts).strip()
+    
+    # Валидация даты
+    try:
+        from utils import parse_birthday_date
+        birthday = parse_birthday_date(date_str)
+    except Exception:
+        await update.message.reply_text("❌ Неверный формат даты. Используйте ДД.ММ (например, 15.03)")
+        return
+
+    from utils import add_birthday
+    success, msg = add_birthday(name, birthday, DATA_FILE)
+    await update.message.reply_text(msg)
+
+async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Удаление именинника: /remove Имя (удаляет всех с таким именем)"""
+    user_id = update.effective_user.id
+    if user_id not in AUTHORIZED_USER_IDS:
+        await update.message.reply_text("🚫 Нет доступа.")
+        return
+
+    if not context.args:
+        await update.message.reply_text("❌ Укажите имя для удаления: `/remove Анна`", parse_mode='Markdown')
+        return
+
+    name = ' '.join(context.args).strip()
+    from utils import remove_birthday
+    success, msg, count = remove_birthday(name, DATA_FILE)
+    await update.message.reply_text(msg)
+
+async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Поиск по имени: /find Анна"""
+    user_id = update.effective_user.id
+    if user_id not in AUTHORIZED_USER_IDS:
+        await update.message.reply_text("🚫 Нет доступа.")
+        return
+
+    if not context.args:
+        await update.message.reply_text("❌ Укажите имя для поиска: `/find Анна`", parse_mode='Markdown')
+        return
+
+    name = ' '.join(context.args).strip()
+    from utils import find_birthday
+    results = find_birthday(name, DATA_FILE)
+    if not results:
+        await update.message.reply_text(f"❌ Ничего не найдено для '{name}'.")
+        return
+
+    # Сортируем по дате
+    results.sort(key=lambda x: (int(x['birthday'].split('.')[1]), int(x['birthday'].split('.')[0])))
+    lines = [f"🔍 Найдено {len(results)} записей:"]
+    for b in results:
+        lines.append(f"  • {b['name']} – {b['birthday']}")
+    await update.message.reply_text("\n".join(lines))
     
