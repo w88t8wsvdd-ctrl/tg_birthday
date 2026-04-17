@@ -14,7 +14,7 @@ from handlers import (
     list_command, 
     test_command, 
     about_command, 
-    greet_command
+    greet_command,
     add_command,
     remove_command,
     find_command 
