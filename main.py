@@ -79,6 +79,9 @@ def main():
     application.add_handler(CommandHandler("about", about_command))
     application.add_handler(CommandHandler("greet", greet_command))
     application.add_handler(CommandHandler("status", status_command))
+    application.add_handler(CommandHandler("add", add_command))
+    application.add_handler(CommandHandler("remove", remove_command))
+    application.add_handler(CommandHandler("find", find_command))
     
     # 2. Обработчик файлов
     application.add_handler(MessageHandler(
